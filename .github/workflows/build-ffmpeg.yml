@@ -1,69 +1,66 @@
-name: Build FFmpeg for Android (armeabi-v7a)
+name: Build FFmpeg Android ARMv7
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
 
 jobs:
-  build-ffmpeg:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout FFmpeg source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install required dependencies
+      - name: Set up Android SDK & NDK
         run: |
-          sudo apt update
-          sudo apt install -y openjdk-17-jdk wget unzip make autoconf automake cmake git pkg-config texinfo yasm
-
-      - name: Install Android SDK and NDK
-        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip make clang autoconf automake libtool pkg-config
           export ANDROID_SDK_ROOT=$HOME/android-sdk
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          cd $ANDROID_SDK_ROOT/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip
-          mv cmdline-tools latest
-          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
-          yes | sdkmanager --licenses
-          echo "y" | sdkmanager --install "platform-tools" "platforms;android-34" "ndk;25.2.9519653" --sdk_root=${ANDROID_SDK_ROOT}
+          mkdir -p $ANDROID_SDK_ROOT
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdtools.zip
+          unzip cmdtools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "ndk;26.3.11579264"
 
-      - name: Build FFmpeg (armeabi-v7a)
+      - name: Set environment
         run: |
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          export NDK=$ANDROID_SDK_ROOT/ndk/25.2.9519653
-          export API=21
-          export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-          export CC=$TOOLCHAIN/bin/armv7a-linux-androideabi$API-clang
-          export CROSS_PREFIX=$TOOLCHAIN/bin/arm-linux-androideabi-
+          echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> $GITHUB_ENV
+          echo "PATH=$PATH:$ANDROID_SDK_ROOT/ndk/26.3.11579264/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_ENV
 
-          mkdir -p build/android/armeabi-v7a
+      - name: Fix missing strip
+        run: |
+          ln -s $ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip \
+            $ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/arm-linux-androideabi-strip || true
 
+      - name: Configure FFmpeg for Android ARMv7
+        run: |
           ./configure \
+            --prefix=$PWD/build/armeabi-v7a \
             --target-os=android \
-            --arch=armv7-a \
+            --arch=arm \
             --cpu=armv7-a \
+            --cross-prefix=armv7a-linux-androideabi28- \
             --enable-cross-compile \
-            --cross-prefix=$CROSS_PREFIX \
-            --cc=$CC \
-            --sysroot=$TOOLCHAIN/sysroot \
-            --prefix=$PWD/build/android/armeabi-v7a \
+            --sysroot=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
+            --cc=armv7a-linux-androideabi28-clang \
+            --cxx=armv7a-linux-androideabi28-clang++ \
             --enable-shared \
             --disable-static \
             --disable-doc \
             --disable-programs \
-            --enable-avdevice \
-            --enable-avfilter \
-            --enable-filters \
-            --enable-pic
+            --disable-stripping
 
-          make -j$(nproc)
-          make install
+      - name: Build FFmpeg
+        run: make -j$(nproc)
 
-      - name: Upload build artifacts
+      - name: Install FFmpeg
+        run: make install
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ffmpeg-android-armeabi-v7a
-          path: build/android/armeabi-v7a/
+          name: ffmpeg-android-armv7
+          path: build/armeabi-v7a/

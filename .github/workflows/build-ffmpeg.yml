@@ -10,24 +10,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout FFmpeg
+      - name: Checkout FFmpeg source
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install required dependencies
         run: |
           sudo apt update
-          sudo apt install -y autoconf automake build-essential cmake git pkg-config texinfo wget yasm
+          sudo apt install -y openjdk-17-jdk wget unzip make autoconf automake cmake git pkg-config texinfo yasm
 
-      - name: Download Android NDK
+      - name: Install Android SDK and NDK
         run: |
-          export NDK_VERSION=25.2.9519653
-          wget https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
-          unzip -q android-ndk-${NDK_VERSION}-linux.zip
-          mv android-ndk-${NDK_VERSION} $HOME/android-ndk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd $ANDROID_SDK_ROOT/cmdline-tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --licenses
+          echo "y" | sdkmanager --install "platform-tools" "platforms;android-34" "ndk;25.2.9519653" --sdk_root=${ANDROID_SDK_ROOT}
 
       - name: Build FFmpeg (armeabi-v7a)
         run: |
-          export NDK=$HOME/android-ndk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          export NDK=$ANDROID_SDK_ROOT/ndk/25.2.9519653
           export API=21
           export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
           export CC=$TOOLCHAIN/bin/armv7a-linux-androideabi$API-clang
